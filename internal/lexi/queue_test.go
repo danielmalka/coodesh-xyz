@@ -40,7 +40,7 @@ func TestQueueFullDoesNotRemember(t *testing.T) {
 
 func BenchmarkQueuePush(b *testing.B) {
 	q := NewQueue(1)
-	ids := make([]string, dedupWindow)
+	ids := make([]string, 2*dedupWindow)
 	for i := range ids {
 		ids[i] = "wamid." + strconv.Itoa(i)
 	}
