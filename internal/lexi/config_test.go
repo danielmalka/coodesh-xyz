@@ -37,6 +37,8 @@ func TestConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("OUTBOUND_TIMEOUT", "3s")
 	t.Setenv("WHATSAPP_TOKEN", "t0k")
 	t.Setenv("MOCK_WHATSAPP_FAILURE_RATE", "0.25")
+	t.Setenv("BREAKER_FAILURES", "7")
+	t.Setenv("BREAKER_COOLDOWN", "45s")
 
 	cfg, err := ConfigFromEnv()
 	if err != nil {
@@ -63,6 +65,8 @@ func TestConfigFromEnvOverrides(t *testing.T) {
 		OutboundTimeout:         3 * time.Second,
 		WhatsAppToken:           "t0k",
 		MockWhatsAppFailureRate: 0.25,
+		BreakerFailures:         7,
+		BreakerCooldown:         45 * time.Second,
 	}
 	if cfg != want {
 		t.Fatalf("cfg = %+v, want %+v", cfg, want)
@@ -101,6 +105,9 @@ func TestConfigFromEnvRejectsBadValues(t *testing.T) {
 		"mock rate nan":         {"MOCK_WHATSAPP_FAILURE_RATE", "NaN", "must be a finite number"},
 		"nan rate":              {"LLM_FAILURE_RATE", "NaN", "must be a finite number"},
 		"inf rate":              {"LLM_FAILURE_RATE", "+Inf", "must be a finite number"},
+		"zero breaker failures": {"BREAKER_FAILURES", "0", "BREAKER_FAILURES must be >= 1"},
+		"zero breaker cooldown": {"BREAKER_COOLDOWN", "0s", "BREAKER_COOLDOWN must be > 0"},
+		"bad breaker cooldown":  {"BREAKER_COOLDOWN", "soon", "BREAKER_COOLDOWN"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

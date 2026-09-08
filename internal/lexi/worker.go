@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 func (a *App) RunWorkers(ctx context.Context) {
@@ -80,9 +82,6 @@ func (a *App) askLLM(ctx context.Context, text string) (reply string, attempts i
 		n++
 		callCtx, cancel := context.WithTimeout(ctx, a.cfg.LLMTimeout)
 		defer cancel()
-		if err := a.upstream.Wait(callCtx); err != nil {
-			return err
-		}
 		r, e := a.llm.Reply(callCtx, text)
 		if e != nil {
 			return e
@@ -112,4 +111,16 @@ func (a *App) abandonPending() int {
 		n++
 	}
 	return n
+}
+
+type limitedLLM struct {
+	inner   LLM
+	limiter *rate.Limiter
+}
+
+func (l *limitedLLM) Reply(ctx context.Context, prompt string) (string, error) {
+	if err := l.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
+	return l.inner.Reply(ctx, prompt)
 }

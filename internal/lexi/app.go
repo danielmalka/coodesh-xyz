@@ -17,6 +17,7 @@ type App struct {
 	dlq         *DeadLetterQueue
 	metrics     *Metrics
 	llm         LLM
+	breaker     *Breaker
 	sender      *WhatsAppSender
 	log         *slog.Logger
 	inbound     *rate.Limiter
@@ -34,10 +35,14 @@ func New(cfg Config, llm LLM, sender *WhatsAppSender, log *slog.Logger) *App {
 		dlq:      &DeadLetterQueue{},
 		metrics:  &Metrics{},
 		llm:      llm,
+		breaker:  newBreaker(cfg.BreakerFailures, cfg.BreakerCooldown),
 		sender:   sender,
 		log:      log,
 		inbound:  cfg.inboundLimiter(),
 		upstream: cfg.upstreamLimiter(),
+	}
+	if llm != nil {
+		a.llm = &breakerLLM{inner: &limitedLLM{inner: llm, limiter: a.upstream}, breaker: a.breaker}
 	}
 	if sender != nil {
 		sender.limiter = a.upstream

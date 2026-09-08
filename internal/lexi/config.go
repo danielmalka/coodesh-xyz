@@ -32,6 +32,8 @@ const (
 	defaultRetryMaxDelay   = 2 * time.Second
 	defaultOutboundTimeout = 5 * time.Second
 	defaultMockFailureRate = 0
+	defaultBreakerFailures = 5
+	defaultBreakerCooldown = 30 * time.Second
 	minRate                = 0
 	maxRate                = 1
 	maxLLMLatency          = time.Hour
@@ -59,6 +61,8 @@ type Config struct {
 	RetryMaxDelay           time.Duration
 	OutboundTimeout         time.Duration
 	MockWhatsAppFailureRate float64
+	BreakerFailures         int
+	BreakerCooldown         time.Duration
 }
 
 func DefaultConfig() Config {
@@ -82,6 +86,8 @@ func DefaultConfig() Config {
 		RetryMaxDelay:           defaultRetryMaxDelay,
 		OutboundTimeout:         defaultOutboundTimeout,
 		MockWhatsAppFailureRate: defaultMockFailureRate,
+		BreakerFailures:         defaultBreakerFailures,
+		BreakerCooldown:         defaultBreakerCooldown,
 	}
 }
 
@@ -139,6 +145,8 @@ func ConfigFromEnv() (Config, error) {
 		readDuration("RETRY_MAX_DELAY", &cfg.RetryMaxDelay),
 		readDuration("OUTBOUND_TIMEOUT", &cfg.OutboundTimeout),
 		readFloat("MOCK_WHATSAPP_FAILURE_RATE", &cfg.MockWhatsAppFailureRate),
+		readInt("BREAKER_FAILURES", &cfg.BreakerFailures),
+		readDuration("BREAKER_COOLDOWN", &cfg.BreakerCooldown),
 	)
 	if err := errors.Join(errs...); err != nil {
 		return Config{}, err
@@ -216,6 +224,12 @@ func (c Config) validate() error {
 	}
 	if c.MockWhatsAppFailureRate < minRate || c.MockWhatsAppFailureRate > maxRate {
 		errs = append(errs, errors.New("MOCK_WHATSAPP_FAILURE_RATE must be in [0,1]"))
+	}
+	if c.BreakerFailures < 1 {
+		errs = append(errs, errors.New("BREAKER_FAILURES must be >= 1"))
+	}
+	if c.BreakerCooldown <= 0 {
+		errs = append(errs, errors.New("BREAKER_COOLDOWN must be > 0"))
 	}
 	return errors.Join(errs...)
 }

@@ -39,6 +39,7 @@ func (a *App) metricsSnapshot() map[string]int64 {
 	s := a.metrics.Snapshot()
 	s["dead_letters"] = int64(a.dlq.Len())
 	s["queue_depth"] = int64(len(a.q.ch))
+	s["breaker_state"] = int64(a.breaker.State())
 	return s
 }
 

@@ -290,6 +290,52 @@ func TestWorkerHardStop(t *testing.T) {
 	}
 }
 
+func eventually(t *testing.T, cond func() bool, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("timeout waiting for condition")
+}
+
+func TestWorkerBreakerTripsToDLQ(t *testing.T) {
+	srv, _ := captureServer(t)
+	var calls atomic.Int32
+	llm := fakeLLM{reply: func(context.Context, string) (string, error) {
+		calls.Add(1)
+		return "", errLLMUnavailable
+	}}
+	cfg := DefaultConfig()
+	cfg.BreakerFailures = 2
+	cfg.BreakerCooldown = time.Hour
+	cfg.MaxAttempts = 1
+	cfg.Workers = 1
+	app := testApp(t, cfg, llm, srv.URL, nil)
+	done, cancel := runWorkers(t, app)
+	for i := range 3 {
+		if postWebhook(app, webhookBody("wamid.brk."+strconv.Itoa(i), "x")).Code != http.StatusAccepted {
+			t.Fatalf("enqueue %d failed", i)
+		}
+	}
+	eventually(t, func() bool { return app.dlq.Len() == 3 }, workerTestTimeout)
+	drainWorkers(t, app, done, cancel)
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("inner calls = %d, want 2", got)
+	}
+	letters := app.dlq.List()
+	third := letters[2]
+	if !strings.Contains(third.Error, "circuit open") || third.Attempts != 1 {
+		t.Fatalf("third letter = %#v", third)
+	}
+	if got := app.Metrics()["breaker_state"]; got != 1 {
+		t.Fatalf("breaker_state = %d, want 1", got)
+	}
+}
+
 func TestAbandonPendingAfterHardStop(t *testing.T) {
 	srv, _ := captureServer(t)
 	started := make(chan struct{})
