@@ -175,6 +175,11 @@ func TestRetryBackoffTable(t *testing.T) {
 	if got := huge.backoff(63); got != huge.maxDelay {
 		t.Fatalf("backoff(63) with wide range = %v, want %v", got, huge.maxDelay)
 	}
+
+	exact := retryPolicy{maxAttempts: 10, baseDelay: time.Nanosecond, maxDelay: math.MaxInt64}
+	if got, want := exact.backoff(63), time.Duration(1)<<62; got != want {
+		t.Fatalf("backoff(63) below cap = %v, want %v", got, want)
+	}
 }
 
 func TestJitter(t *testing.T) {
@@ -193,19 +198,14 @@ func TestJitter(t *testing.T) {
 	}
 }
 
-func TestRetryElapsedTimeBounds(t *testing.T) {
+func TestSleepWaitsFullDuration(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		calls := 0
-		p := retryPolicy{maxAttempts: 3, baseDelay: 100 * time.Millisecond, maxDelay: time.Second}
 		start := time.Now()
-		_ = retry(t.Context(), p, func(context.Context) error {
-			calls++
-			return errBoom
-		})
-		elapsed := time.Since(start)
-		maxWait := p.backoff(1) + p.backoff(2)
-		if elapsed < 0 || elapsed > maxWait {
-			t.Fatalf("elapsed = %v, want in [0, %v]", elapsed, maxWait)
+		if err := sleep(t.Context(), 10*time.Second); err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if elapsed := time.Since(start); elapsed != 10*time.Second {
+			t.Fatalf("elapsed = %v, want 10s", elapsed)
 		}
 	})
 }

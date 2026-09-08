@@ -3,6 +3,7 @@ package lexi
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"strconv"
@@ -18,6 +19,13 @@ const (
 	defaultWhatsAppURL     = "http://127.0.0.1:8080/mock/whatsapp/messages"
 	defaultRateLimitRPS    = 50
 	defaultShutdownTimeout = 10 * time.Second
+	defaultLLMMinLatency   = 200 * time.Millisecond
+	defaultLLMMaxLatency   = 2 * time.Second
+	defaultLLMFailureRate  = 0.15
+	defaultLLMSlowRate     = 0.10
+	minRate                = 0
+	maxRate                = 1
+	maxLLMLatency          = time.Hour
 )
 
 type Config struct {
@@ -29,6 +37,10 @@ type Config struct {
 	WhatsAppURL     string
 	RateLimitRPS    float64
 	ShutdownTimeout time.Duration
+	LLMMinLatency   time.Duration
+	LLMMaxLatency   time.Duration
+	LLMFailureRate  float64
+	LLMSlowRate     float64
 }
 
 func DefaultConfig() Config {
@@ -41,6 +53,19 @@ func DefaultConfig() Config {
 		WhatsAppURL:     defaultWhatsAppURL,
 		RateLimitRPS:    defaultRateLimitRPS,
 		ShutdownTimeout: defaultShutdownTimeout,
+		LLMMinLatency:   defaultLLMMinLatency,
+		LLMMaxLatency:   defaultLLMMaxLatency,
+		LLMFailureRate:  defaultLLMFailureRate,
+		LLMSlowRate:     defaultLLMSlowRate,
+	}
+}
+
+func (c Config) LLMSimulation() LLMSimulation {
+	return LLMSimulation{
+		MinLatency:  c.LLMMinLatency,
+		MaxLatency:  c.LLMMaxLatency,
+		FailureRate: c.LLMFailureRate,
+		SlowRate:    c.LLMSlowRate,
 	}
 }
 
@@ -57,6 +82,10 @@ func ConfigFromEnv() (Config, error) {
 		readFloat("RATE_LIMIT_RPS", &cfg.RateLimitRPS),
 		readDuration("LLM_TIMEOUT", &cfg.LLMTimeout),
 		readDuration("SHUTDOWN_TIMEOUT", &cfg.ShutdownTimeout),
+		readDuration("LLM_MIN_LATENCY", &cfg.LLMMinLatency),
+		readDuration("LLM_MAX_LATENCY", &cfg.LLMMaxLatency),
+		readFloat("LLM_FAILURE_RATE", &cfg.LLMFailureRate),
+		readFloat("LLM_SLOW_RATE", &cfg.LLMSlowRate),
 	)
 	if err := errors.Join(errs...); err != nil {
 		return Config{}, err
@@ -90,6 +119,27 @@ func (c Config) validate() error {
 	if u, err := url.Parse(c.WhatsAppURL); err != nil || u.Scheme == "" || u.Host == "" {
 		errs = append(errs, errors.New("WHATSAPP_API_URL must be an absolute http(s) URL"))
 	}
+	if c.LLMMinLatency < 0 {
+		errs = append(errs, errors.New("LLM_MIN_LATENCY must be >= 0"))
+	}
+	if c.LLMMaxLatency < 0 {
+		errs = append(errs, errors.New("LLM_MAX_LATENCY must be >= 0"))
+	}
+	if c.LLMMaxLatency > maxLLMLatency {
+		errs = append(errs, errors.New("LLM_MAX_LATENCY must be <= 1h"))
+	}
+	if c.LLMMinLatency > c.LLMMaxLatency {
+		errs = append(errs, errors.New("LLM_MIN_LATENCY must be <= LLM_MAX_LATENCY"))
+	}
+	if c.LLMFailureRate < minRate || c.LLMFailureRate > maxRate {
+		errs = append(errs, errors.New("LLM_FAILURE_RATE must be in [0,1]"))
+	}
+	if c.LLMSlowRate < minRate || c.LLMSlowRate > maxRate {
+		errs = append(errs, errors.New("LLM_SLOW_RATE must be in [0,1]"))
+	}
+	if c.LLMFailureRate+c.LLMSlowRate > maxRate {
+		errs = append(errs, errors.New("LLM_FAILURE_RATE + LLM_SLOW_RATE must be <= 1"))
+	}
 	return errors.Join(errs...)
 }
 
@@ -120,6 +170,9 @@ func readFloat(key string, dst *float64) error {
 	f, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		return fmt.Errorf("%s: %w", key, err)
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return fmt.Errorf("%s: must be a finite number", key)
 	}
 	*dst = f
 	return nil

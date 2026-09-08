@@ -21,7 +21,7 @@ func (p retryPolicy) backoff(attempt int) time.Duration {
 		return min(p.baseDelay, p.maxDelay)
 	}
 	shift := attempt - 1
-	if shift >= maxBackoffShift || p.baseDelay >= p.maxDelay>>shift {
+	if shift >= maxBackoffShift || p.baseDelay > p.maxDelay>>shift {
 		return p.maxDelay
 	}
 	return p.baseDelay << shift
@@ -85,6 +85,9 @@ func jitter(d time.Duration) time.Duration {
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
