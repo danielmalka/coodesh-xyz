@@ -38,9 +38,21 @@ func TestQueueFullDoesNotRemember(t *testing.T) {
 	}
 }
 
+func TestQueueClose(t *testing.T) {
+	q := NewQueue(8)
+	q.Close()
+	if got := q.push(Job{MessageID: "after"}); got != closed {
+		t.Fatalf("push after Close = %v, want closed", got)
+	}
+	q.Close()
+	if _, ok := <-q.jobs(); ok {
+		t.Fatal("jobs channel still open after Close")
+	}
+}
+
 func BenchmarkQueuePush(b *testing.B) {
 	q := NewQueue(1)
-	ids := make([]string, dedupWindow)
+	ids := make([]string, 2*dedupWindow)
 	for i := range ids {
 		ids[i] = "wamid." + strconv.Itoa(i)
 	}

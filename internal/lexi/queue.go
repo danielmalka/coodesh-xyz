@@ -9,7 +9,6 @@ type Job struct {
 	MessageID string
 	From      string
 	Text      string
-	Attempts  int
 }
 
 type enqueueResult int
@@ -18,19 +17,21 @@ const (
 	enqueued enqueueResult = iota
 	duplicate
 	full
+	closed
 )
 
 type Queue struct {
-	ch   chan Job
-	mu   sync.Mutex
-	seen map[string]struct{}
-	ring []string
-	next int
+	ch     chan Job
+	mu     sync.Mutex
+	seen   map[string]struct{}
+	ring   []string
+	next   int
+	closed bool
 }
 
 func NewQueue(size int) *Queue {
 	if size < 1 {
-		size = 64
+		size = defaultQueueSize
 	}
 	return &Queue{
 		ch:   make(chan Job, size),
@@ -42,6 +43,9 @@ func NewQueue(size int) *Queue {
 func (q *Queue) push(j Job) enqueueResult {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if q.closed {
+		return closed
+	}
 	if _, ok := q.seen[j.MessageID]; ok {
 		return duplicate
 	}
@@ -65,4 +69,14 @@ func (q *Queue) remember(id string) {
 
 func (q *Queue) jobs() <-chan Job {
 	return q.ch
+}
+
+func (q *Queue) Close() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.closed {
+		return
+	}
+	q.closed = true
+	close(q.ch)
 }

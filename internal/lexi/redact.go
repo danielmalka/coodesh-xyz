@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 )
 
-func hashFrom(from string) string {
+const senderHashBytes = 6
+
+func hashPhone(from string) string {
 	sum := sha256.Sum256([]byte(from))
-	return hex.EncodeToString(sum[:6])
+	return hex.EncodeToString(sum[:senderHashBytes])
 }
