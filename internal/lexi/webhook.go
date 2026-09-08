@@ -40,7 +40,7 @@ func (a *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		a.log.Error("webhook queue full", "message_id", in.MessageID)
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "busy"})
 	default:
-		a.log.Info("webhook accepted", "message_id", in.MessageID, "from", hashFrom(in.From))
+		a.log.Info("webhook accepted", "message_id", in.MessageID, "from", hashPhone(in.From))
 		writeJSON(w, http.StatusAccepted, map[string]any{"received": true, "message_id": in.MessageID})
 	}
 }

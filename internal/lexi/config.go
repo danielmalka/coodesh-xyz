@@ -23,40 +23,53 @@ const (
 	defaultLLMMaxLatency   = 2 * time.Second
 	defaultLLMFailureRate  = 0.15
 	defaultLLMSlowRate     = 0.10
+	defaultRetryBaseDelay  = 200 * time.Millisecond
+	defaultRetryMaxDelay   = 2 * time.Second
+	defaultOutboundTimeout = 5 * time.Second
+	defaultMockFailureRate = 0
 	minRate                = 0
 	maxRate                = 1
 	maxLLMLatency          = time.Hour
 )
 
 type Config struct {
-	Addr            string
-	Workers         int
-	QueueSize       int
-	LLMTimeout      time.Duration
-	MaxAttempts     int
-	WhatsAppURL     string
-	RateLimitRPS    float64
-	ShutdownTimeout time.Duration
-	LLMMinLatency   time.Duration
-	LLMMaxLatency   time.Duration
-	LLMFailureRate  float64
-	LLMSlowRate     float64
+	Addr                    string
+	Workers                 int
+	QueueSize               int
+	LLMTimeout              time.Duration
+	MaxAttempts             int
+	WhatsAppURL             string
+	WhatsAppToken           string
+	RateLimitRPS            float64
+	ShutdownTimeout         time.Duration
+	LLMMinLatency           time.Duration
+	LLMMaxLatency           time.Duration
+	LLMFailureRate          float64
+	LLMSlowRate             float64
+	RetryBaseDelay          time.Duration
+	RetryMaxDelay           time.Duration
+	OutboundTimeout         time.Duration
+	MockWhatsAppFailureRate float64
 }
 
 func DefaultConfig() Config {
 	return Config{
-		Addr:            defaultAddr,
-		Workers:         defaultWorkers,
-		QueueSize:       defaultQueueSize,
-		LLMTimeout:      defaultLLMTimeout,
-		MaxAttempts:     defaultMaxAttempts,
-		WhatsAppURL:     defaultWhatsAppURL,
-		RateLimitRPS:    defaultRateLimitRPS,
-		ShutdownTimeout: defaultShutdownTimeout,
-		LLMMinLatency:   defaultLLMMinLatency,
-		LLMMaxLatency:   defaultLLMMaxLatency,
-		LLMFailureRate:  defaultLLMFailureRate,
-		LLMSlowRate:     defaultLLMSlowRate,
+		Addr:                    defaultAddr,
+		Workers:                 defaultWorkers,
+		QueueSize:               defaultQueueSize,
+		LLMTimeout:              defaultLLMTimeout,
+		MaxAttempts:             defaultMaxAttempts,
+		WhatsAppURL:             defaultWhatsAppURL,
+		RateLimitRPS:            defaultRateLimitRPS,
+		ShutdownTimeout:         defaultShutdownTimeout,
+		LLMMinLatency:           defaultLLMMinLatency,
+		LLMMaxLatency:           defaultLLMMaxLatency,
+		LLMFailureRate:          defaultLLMFailureRate,
+		LLMSlowRate:             defaultLLMSlowRate,
+		RetryBaseDelay:          defaultRetryBaseDelay,
+		RetryMaxDelay:           defaultRetryMaxDelay,
+		OutboundTimeout:         defaultOutboundTimeout,
+		MockWhatsAppFailureRate: defaultMockFailureRate,
 	}
 }
 
@@ -69,12 +82,17 @@ func (c Config) LLMSimulation() LLMSimulation {
 	}
 }
 
+func (c Config) retryPolicy() retryPolicy {
+	return retryPolicy{maxAttempts: c.MaxAttempts, baseDelay: c.RetryBaseDelay, maxDelay: c.RetryMaxDelay}
+}
+
 func ConfigFromEnv() (Config, error) {
 	cfg := DefaultConfig()
 	var errs []error
 
 	readString("ADDR", &cfg.Addr)
 	readString("WHATSAPP_API_URL", &cfg.WhatsAppURL)
+	readString("WHATSAPP_TOKEN", &cfg.WhatsAppToken)
 	errs = append(errs,
 		readInt("WORKERS", &cfg.Workers),
 		readInt("QUEUE_SIZE", &cfg.QueueSize),
@@ -86,6 +104,10 @@ func ConfigFromEnv() (Config, error) {
 		readDuration("LLM_MAX_LATENCY", &cfg.LLMMaxLatency),
 		readFloat("LLM_FAILURE_RATE", &cfg.LLMFailureRate),
 		readFloat("LLM_SLOW_RATE", &cfg.LLMSlowRate),
+		readDuration("RETRY_BASE_DELAY", &cfg.RetryBaseDelay),
+		readDuration("RETRY_MAX_DELAY", &cfg.RetryMaxDelay),
+		readDuration("OUTBOUND_TIMEOUT", &cfg.OutboundTimeout),
+		readFloat("MOCK_WHATSAPP_FAILURE_RATE", &cfg.MockWhatsAppFailureRate),
 	)
 	if err := errors.Join(errs...); err != nil {
 		return Config{}, err
@@ -139,6 +161,21 @@ func (c Config) validate() error {
 	}
 	if c.LLMFailureRate+c.LLMSlowRate > maxRate {
 		errs = append(errs, errors.New("LLM_FAILURE_RATE + LLM_SLOW_RATE must be <= 1"))
+	}
+	if c.RetryBaseDelay <= 0 {
+		errs = append(errs, errors.New("RETRY_BASE_DELAY must be > 0"))
+	}
+	if c.RetryMaxDelay <= 0 {
+		errs = append(errs, errors.New("RETRY_MAX_DELAY must be > 0"))
+	}
+	if c.OutboundTimeout <= 0 {
+		errs = append(errs, errors.New("OUTBOUND_TIMEOUT must be > 0"))
+	}
+	if c.RetryBaseDelay > 0 && c.RetryMaxDelay > 0 && c.RetryBaseDelay > c.RetryMaxDelay {
+		errs = append(errs, errors.New("RETRY_BASE_DELAY must be <= RETRY_MAX_DELAY"))
+	}
+	if c.MockWhatsAppFailureRate < minRate || c.MockWhatsAppFailureRate > maxRate {
+		errs = append(errs, errors.New("MOCK_WHATSAPP_FAILURE_RATE must be in [0,1]"))
 	}
 	return errors.Join(errs...)
 }

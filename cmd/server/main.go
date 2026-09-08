@@ -36,7 +36,7 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	app := lexi.New(lexi.NewQueue(cfg.QueueSize), log)
+	app := lexi.New(lexi.NewQueue(cfg.QueueSize), log).WithMockFailureRate(cfg.MockWhatsAppFailureRate)
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           app.Routes(),

@@ -29,24 +29,34 @@ func TestConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("LLM_MAX_LATENCY", "1500ms")
 	t.Setenv("LLM_FAILURE_RATE", "0.2")
 	t.Setenv("LLM_SLOW_RATE", "0.05")
+	t.Setenv("RETRY_BASE_DELAY", "100ms")
+	t.Setenv("RETRY_MAX_DELAY", "5s")
+	t.Setenv("OUTBOUND_TIMEOUT", "3s")
+	t.Setenv("WHATSAPP_TOKEN", "t0k")
+	t.Setenv("MOCK_WHATSAPP_FAILURE_RATE", "0.25")
 
 	cfg, err := ConfigFromEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := Config{
-		Addr:            ":9090",
-		Workers:         8,
-		QueueSize:       1024,
-		LLMTimeout:      1500 * time.Millisecond,
-		MaxAttempts:     5,
-		WhatsAppURL:     "https://graph.facebook.com/v20.0/123/messages",
-		RateLimitRPS:    12.5,
-		ShutdownTimeout: 3 * time.Second,
-		LLMMinLatency:   50 * time.Millisecond,
-		LLMMaxLatency:   1500 * time.Millisecond,
-		LLMFailureRate:  0.2,
-		LLMSlowRate:     0.05,
+		Addr:                    ":9090",
+		Workers:                 8,
+		QueueSize:               1024,
+		LLMTimeout:              1500 * time.Millisecond,
+		MaxAttempts:             5,
+		WhatsAppURL:             "https://graph.facebook.com/v20.0/123/messages",
+		RateLimitRPS:            12.5,
+		ShutdownTimeout:         3 * time.Second,
+		LLMMinLatency:           50 * time.Millisecond,
+		LLMMaxLatency:           1500 * time.Millisecond,
+		LLMFailureRate:          0.2,
+		LLMSlowRate:             0.05,
+		RetryBaseDelay:          100 * time.Millisecond,
+		RetryMaxDelay:           5 * time.Second,
+		OutboundTimeout:         3 * time.Second,
+		WhatsAppToken:           "t0k",
+		MockWhatsAppFailureRate: 0.25,
 	}
 	if cfg != want {
 		t.Fatalf("cfg = %+v, want %+v", cfg, want)
@@ -69,6 +79,13 @@ func TestConfigFromEnvRejectsBadValues(t *testing.T) {
 		"failure rate too high": {"LLM_FAILURE_RATE", "1.5", "LLM_FAILURE_RATE must be in [0,1]"},
 		"slow rate negative":    {"LLM_SLOW_RATE", "-0.1", "LLM_SLOW_RATE must be in [0,1]"},
 		"max latency too long":  {"LLM_MAX_LATENCY", "2h", "LLM_MAX_LATENCY must be <= 1h"},
+		"bad retry base":        {"RETRY_BASE_DELAY", "soon", "RETRY_BASE_DELAY"},
+		"zero retry base":       {"RETRY_BASE_DELAY", "0s", "RETRY_BASE_DELAY must be > 0"},
+		"negative retry max":    {"RETRY_MAX_DELAY", "-1s", "RETRY_MAX_DELAY must be > 0"},
+		"zero outbound timeout": {"OUTBOUND_TIMEOUT", "0", "OUTBOUND_TIMEOUT must be > 0"},
+		"mock rate too high":    {"MOCK_WHATSAPP_FAILURE_RATE", "1.5", "MOCK_WHATSAPP_FAILURE_RATE must be in [0,1]"},
+		"mock rate negative":    {"MOCK_WHATSAPP_FAILURE_RATE", "-0.1", "MOCK_WHATSAPP_FAILURE_RATE must be in [0,1]"},
+		"mock rate nan":         {"MOCK_WHATSAPP_FAILURE_RATE", "NaN", "must be a finite number"},
 		"nan rate":              {"LLM_FAILURE_RATE", "NaN", "must be a finite number"},
 		"inf rate":              {"LLM_FAILURE_RATE", "+Inf", "must be a finite number"},
 	}
@@ -101,6 +118,14 @@ func TestConfigFromEnvRejectsBadLLMCombinations(t *testing.T) {
 		_, err := ConfigFromEnv()
 		if err == nil || !strings.Contains(err.Error(), "LLM_FAILURE_RATE + LLM_SLOW_RATE must be <= 1") {
 			t.Fatalf("err = %v, want it to mention LLM_FAILURE_RATE + LLM_SLOW_RATE must be <= 1", err)
+		}
+	})
+	t.Run("retry base greater than max", func(t *testing.T) {
+		t.Setenv("RETRY_BASE_DELAY", "5s")
+		t.Setenv("RETRY_MAX_DELAY", "1s")
+		_, err := ConfigFromEnv()
+		if err == nil || !strings.Contains(err.Error(), "RETRY_BASE_DELAY must be <= RETRY_MAX_DELAY") {
+			t.Fatalf("err = %v, want it to mention RETRY_BASE_DELAY must be <= RETRY_MAX_DELAY", err)
 		}
 	})
 }
