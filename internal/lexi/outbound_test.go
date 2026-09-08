@@ -88,7 +88,8 @@ func TestWhatsAppSenderSuccess(t *testing.T) {
 	cfg := testSenderConfig(srv.URL, testMaxAttempts)
 	sender := NewWhatsAppSender(cfg, nil, silentLog())
 	msg := OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText}
-	if err := sender.Send(t.Context(), msg); err != nil {
+	attempts, err := sender.Send(t.Context(), msg)
+	if err != nil {
 		t.Fatalf("Send = %v, want nil", err)
 	}
 	if calls.Load() != 1 {
@@ -111,6 +112,9 @@ func TestWhatsAppSenderSuccess(t *testing.T) {
 	if got.auth != "" {
 		t.Fatalf("auth = %q, want empty without token", got.auth)
 	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want %d", attempts, 1)
+	}
 }
 
 func TestWhatsAppSenderBearerToken(t *testing.T) {
@@ -126,7 +130,8 @@ func TestWhatsAppSenderBearerToken(t *testing.T) {
 	cfg.WhatsAppToken = testToken
 	sender := NewWhatsAppSender(cfg, nil, silentLog())
 	msg := OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText}
-	if err := sender.Send(t.Context(), msg); err != nil {
+	attempts, err := sender.Send(t.Context(), msg)
+	if err != nil {
 		t.Fatalf("Send with token = %v, want nil", err)
 	}
 	cap := <-captured
@@ -135,6 +140,9 @@ func TestWhatsAppSenderBearerToken(t *testing.T) {
 	}
 	if cap.got.auth != "Bearer "+testToken {
 		t.Fatalf("auth = %q, want Bearer token", cap.got.auth)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want %d", attempts, 1)
 	}
 }
 
@@ -150,11 +158,15 @@ func TestWhatsAppSenderTransientThenSuccess(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewWhatsAppSender(testSenderConfig(srv.URL, testMaxAttempts), nil, silentLog())
-	if err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText}); err != nil {
+	attempts, err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
+	if err != nil {
 		t.Fatalf("Send = %v, want nil", err)
 	}
 	if calls.Load() != testMaxAttempts {
 		t.Fatalf("calls = %d, want %d", calls.Load(), testMaxAttempts)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want %d", attempts, 3)
 	}
 }
 
@@ -170,7 +182,7 @@ func TestWhatsAppSenderRetriesTooManyRequests(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewWhatsAppSender(testSenderConfig(srv.URL, testMaxAttempts), nil, silentLog())
-	if err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText}); err != nil {
+	if _, err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText}); err != nil {
 		t.Fatalf("Send = %v, want nil", err)
 	}
 	if calls.Load() != testMaxAttempts {
@@ -187,7 +199,7 @@ func TestWhatsAppSenderPermanentBadRequest(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewWhatsAppSender(testSenderConfig(srv.URL, testMaxAttempts), nil, silentLog())
-	err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
+	attempts, err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
 	if err == nil {
 		t.Fatal("Send = nil, want permanent error")
 	}
@@ -196,6 +208,9 @@ func TestWhatsAppSenderPermanentBadRequest(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("calls = %d, want 1", calls.Load())
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want %d", attempts, 1)
 	}
 }
 
@@ -208,7 +223,7 @@ func TestWhatsAppSenderExhaustion(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewWhatsAppSender(testSenderConfig(srv.URL, testMaxAttempts), nil, silentLog())
-	err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
+	attempts, err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
 	if err == nil {
 		t.Fatal("Send = nil, want exhaustion error")
 	}
@@ -217,6 +232,9 @@ func TestWhatsAppSenderExhaustion(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "attempts") {
 		t.Fatalf("err = %q, want it to mention attempts", err)
+	}
+	if attempts != testMaxAttempts {
+		t.Fatalf("attempts = %d, want %d", attempts, testMaxAttempts)
 	}
 }
 
@@ -231,12 +249,15 @@ func TestWhatsAppSenderPreCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	sender := NewWhatsAppSender(testSenderConfig(srv.URL, testMaxAttempts), nil, silentLog())
-	err := sender.Send(ctx, OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
+	attempts, err := sender.Send(ctx, OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want wrapping context.Canceled", err)
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("calls = %d, want 0", calls.Load())
+	}
+	if attempts != 0 {
+		t.Fatalf("attempts = %d, want %d", attempts, 0)
 	}
 }
 
@@ -255,7 +276,7 @@ func TestWhatsAppSenderAttemptTimeout(t *testing.T) {
 	noTimeoutClient := &http.Client{}
 	sender := NewWhatsAppSender(testSenderConfig(srv.URL, testMaxAttempts), noTimeoutClient, silentLog())
 	start := time.Now()
-	err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
+	attempts, err := sender.Send(t.Context(), OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText})
 	if err == nil {
 		t.Fatal("Send = nil, want timeout error")
 	}
@@ -271,6 +292,9 @@ func TestWhatsAppSenderAttemptTimeout(t *testing.T) {
 	if elapsed := time.Since(start); elapsed >= testSlowHandlerDelay {
 		t.Fatalf("elapsed = %v, want below the handler delay %v", elapsed, testSlowHandlerDelay)
 	}
+	if attempts != testMaxAttempts {
+		t.Fatalf("attempts = %d, want %d", attempts, testMaxAttempts)
+	}
 }
 
 func TestWhatsAppSenderDoesNotLogPII(t *testing.T) {
@@ -283,7 +307,7 @@ func TestWhatsAppSenderDoesNotLogPII(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&buf, nil))
 	sender := NewWhatsAppSender(testSenderConfig(srv.URL, 1), nil, log)
 	msg := OutboundMessage{MessageID: testMessageID, To: testPhone, Text: testText}
-	if err := sender.Send(t.Context(), msg); err != nil {
+	if _, err := sender.Send(t.Context(), msg); err != nil {
 		t.Fatalf("Send = %v, want nil", err)
 	}
 	out := buf.String()
@@ -309,7 +333,7 @@ func BenchmarkWhatsAppSenderSend(b *testing.B) {
 	ctx := b.Context()
 	b.ReportAllocs()
 	for b.Loop() {
-		if err := sender.Send(ctx, msg); err != nil {
+		if _, err := sender.Send(ctx, msg); err != nil {
 			b.Fatal(err)
 		}
 	}

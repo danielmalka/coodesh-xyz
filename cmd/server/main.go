@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"expvar"
 	"log/slog"
 	"net/http"
 	"os"
@@ -36,7 +37,19 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	app := lexi.New(lexi.NewQueue(cfg.QueueSize), log).WithMockFailureRate(cfg.MockWhatsAppFailureRate)
+	llm := lexi.NewSimulatedLLM(cfg.LLMSimulation(), uint64(time.Now().UnixNano()))
+	sender := lexi.NewWhatsAppSender(cfg, nil, log)
+	app := lexi.New(cfg, llm, sender, log)
+	expvar.Publish("lexi", expvar.Func(func() any { return app.Metrics() }))
+
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	defer stopWorkers()
+	workersDone := make(chan struct{})
+	go func() {
+		app.RunWorkers(workerCtx)
+		close(workersDone)
+	}()
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           app.Routes(),
@@ -53,15 +66,33 @@ func run(log *slog.Logger) error {
 
 	select {
 	case err := <-errCh:
+		stopWorkers()
+		<-workersDone
 		return err
 	case <-ctx.Done():
 	}
 
-	log.Info("shutting down", "timeout", cfg.ShutdownTimeout)
+	log.Info("shutting down http", "timeout", cfg.ShutdownTimeout)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		stopWorkers()
+		<-workersDone
 		return err
+	}
+
+	log.Info("closing queue")
+	app.Close()
+
+	log.Info("waiting for workers")
+	select {
+	case <-workersDone:
+		log.Info("workers drained")
+	case <-shutdownCtx.Done():
+		log.Warn("shutdown deadline reached, aborting in-flight jobs", "queue_depth", app.Metrics()["queue_depth"])
+		stopWorkers()
+		<-workersDone
+		log.Warn("abandoned queued jobs", "count", app.AbandonPending())
 	}
 	return nil
 }

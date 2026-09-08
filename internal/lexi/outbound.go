@@ -56,7 +56,7 @@ func NewWhatsAppSender(cfg Config, client *http.Client, log *slog.Logger) *Whats
 	}
 }
 
-func (s *WhatsAppSender) Send(ctx context.Context, msg OutboundMessage) error {
+func (s *WhatsAppSender) Send(ctx context.Context, msg OutboundMessage) (attempts int, err error) {
 	payload := outboundPayload{
 		MessagingProduct: "whatsapp",
 		To:               msg.To,
@@ -65,11 +65,13 @@ func (s *WhatsAppSender) Send(ctx context.Context, msg OutboundMessage) error {
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return permanent(err)
+		return 0, permanent(err)
 	}
-	return retry(ctx, s.policy, func(ctx context.Context) error {
+	err = retry(ctx, s.policy, func(ctx context.Context) error {
+		attempts++
 		return s.attempt(ctx, msg, raw)
 	})
+	return attempts, err
 }
 
 func (s *WhatsAppSender) attempt(ctx context.Context, msg OutboundMessage, raw []byte) error {

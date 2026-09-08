@@ -34,11 +34,6 @@ type mockErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func (a *App) WithMockFailureRate(rate float64) *App {
-	a.mockFailureRate = rate
-	return a
-}
-
 func (a *App) handleMockWhatsApp(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var payload mockWhatsAppRequest
@@ -50,7 +45,7 @@ func (a *App) handleMockWhatsApp(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, mockErrorResponse{Error: "invalid payload"})
 		return
 	}
-	if a.mockFailureRate > 0 && rand.Float64() < a.mockFailureRate {
+	if a.cfg.MockWhatsAppFailureRate > 0 && rand.Float64() < a.cfg.MockWhatsAppFailureRate {
 		writeJSON(w, http.StatusServiceUnavailable, mockErrorResponse{Error: "simulated outage"})
 		return
 	}

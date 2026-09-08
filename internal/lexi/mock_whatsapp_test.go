@@ -25,10 +25,17 @@ func postMockWhatsApp(app *App, body string) *httptest.ResponseRecorder {
 	return rec
 }
 
+func newMockApp(failureRate float64, log *slog.Logger) *App {
+	cfg := DefaultConfig()
+	cfg.QueueSize = 8
+	cfg.MockWhatsAppFailureRate = failureRate
+	return New(cfg, nil, nil, log)
+}
+
 func TestMockWhatsAppDelivers(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, nil))
-	app := New(NewQueue(8), log).WithMockFailureRate(0)
+	app := newMockApp(0, log)
 
 	rec := postMockWhatsApp(app, mockValidBody)
 	if rec.Code != http.StatusOK {
@@ -58,7 +65,7 @@ func TestMockWhatsAppDelivers(t *testing.T) {
 }
 
 func TestMockWhatsAppRejectsInvalidPayload(t *testing.T) {
-	app := New(NewQueue(8), silentLog())
+	app := newMockApp(0, silentLog())
 	cases := []string{
 		``,
 		`{`,
@@ -76,7 +83,7 @@ func TestMockWhatsAppRejectsInvalidPayload(t *testing.T) {
 }
 
 func TestMockWhatsAppSimulatedOutage(t *testing.T) {
-	app := New(NewQueue(8), silentLog()).WithMockFailureRate(1)
+	app := newMockApp(1, silentLog())
 
 	rec := postMockWhatsApp(app, mockValidBody)
 	if rec.Code != http.StatusServiceUnavailable {
@@ -94,7 +101,7 @@ func TestMockWhatsAppSimulatedOutage(t *testing.T) {
 func TestMockWhatsAppEndToEnd(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, nil))
-	app := New(NewQueue(8), silentLog()).WithMockFailureRate(0)
+	app := newMockApp(0, silentLog())
 	srv := httptest.NewServer(app.Routes())
 	defer srv.Close()
 
@@ -105,7 +112,7 @@ func TestMockWhatsAppEndToEnd(t *testing.T) {
 	cfg.RetryMaxDelay = testRetryMaxDelay
 	sender := NewWhatsAppSender(cfg, nil, log)
 	msg := OutboundMessage{MessageID: mockTestMessage, To: testPhone, Text: testText}
-	if err := sender.Send(t.Context(), msg); err != nil {
+	if _, err := sender.Send(t.Context(), msg); err != nil {
 		t.Fatalf("Send = %v, want nil", err)
 	}
 	out := buf.String()
