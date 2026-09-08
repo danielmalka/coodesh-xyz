@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"golang.org/x/time/rate"
 )
 
 func TestWebhookAcceptsAndEnqueues(t *testing.T) {
@@ -208,6 +210,7 @@ func BenchmarkWebhookHandler(b *testing.B) {
 	cfg := DefaultConfig()
 	cfg.QueueSize = benchQueueSize
 	app := New(cfg, nil, nil, silentLog())
+	app.inbound = rate.NewLimiter(rate.Inf, 0)
 	h := app.Routes()
 	b.ReportAllocs()
 	i := 0

@@ -60,7 +60,13 @@ func run(log *slog.Logger) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("listening", "addr", cfg.Addr)
+		log.Info("listening",
+			"addr", cfg.Addr,
+			"inbound_rps", cfg.InboundRPS,
+			"inbound_burst", cfg.InboundBurst,
+			"upstream_rps", cfg.UpstreamRPS,
+			"upstream_burst", cfg.UpstreamBurst,
+		)
 		errCh <- srv.ListenAndServe()
 	}()
 

@@ -3,6 +3,7 @@ package lexi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -15,6 +16,14 @@ type inbound struct {
 }
 
 func (a *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
+	// ponytail: global limiter; per-sender keyed limiters if fairness across customers matters.
+	if !a.inbound.Allow() {
+		a.metrics.RateLimited.Add(1)
+		w.Header().Set("Retry-After", strconv.Itoa(a.cfg.retryAfterSeconds()))
+		a.log.Warn("webhook rate limited")
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limited"})
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
 	var in inbound

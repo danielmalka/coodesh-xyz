@@ -22,6 +22,8 @@ const (
 	fakeReplyBody     = "proposta pronta"
 	gracefulJobCount  = 20
 	abandonJobCount   = 5
+	testUpstreamRPS   = 1e6
+	testUpstreamBurst = 1_000_000
 )
 
 type fakeLLM struct {
@@ -70,6 +72,11 @@ func testApp(t *testing.T, cfg Config, llm LLM, target string, log *slog.Logger)
 	}
 	if cfg.QueueSize < 1 {
 		cfg.QueueSize = 64
+	}
+	def := DefaultConfig()
+	if cfg.UpstreamRPS == def.UpstreamRPS && cfg.UpstreamBurst == def.UpstreamBurst {
+		cfg.UpstreamRPS = testUpstreamRPS
+		cfg.UpstreamBurst = testUpstreamBurst
 	}
 	return New(cfg, llm, NewWhatsAppSender(cfg, nil, log), log)
 }

@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -17,7 +19,10 @@ const (
 	defaultLLMTimeout      = 5 * time.Second
 	defaultMaxAttempts     = 3
 	defaultWhatsAppURL     = "http://127.0.0.1:8080/mock/whatsapp/messages"
-	defaultRateLimitRPS    = 50
+	defaultInboundRPS      = 50
+	defaultInboundBurst    = 100
+	defaultUpstreamRPS     = 10
+	defaultUpstreamBurst   = 10
 	defaultShutdownTimeout = 10 * time.Second
 	defaultLLMMinLatency   = 200 * time.Millisecond
 	defaultLLMMaxLatency   = 2 * time.Second
@@ -30,6 +35,7 @@ const (
 	minRate                = 0
 	maxRate                = 1
 	maxLLMLatency          = time.Hour
+	retryAfterMin          = time.Second
 )
 
 type Config struct {
@@ -40,7 +46,10 @@ type Config struct {
 	MaxAttempts             int
 	WhatsAppURL             string
 	WhatsAppToken           string
-	RateLimitRPS            float64
+	InboundRPS              float64
+	InboundBurst            int
+	UpstreamRPS             float64
+	UpstreamBurst           int
 	ShutdownTimeout         time.Duration
 	LLMMinLatency           time.Duration
 	LLMMaxLatency           time.Duration
@@ -60,7 +69,10 @@ func DefaultConfig() Config {
 		LLMTimeout:              defaultLLMTimeout,
 		MaxAttempts:             defaultMaxAttempts,
 		WhatsAppURL:             defaultWhatsAppURL,
-		RateLimitRPS:            defaultRateLimitRPS,
+		InboundRPS:              defaultInboundRPS,
+		InboundBurst:            defaultInboundBurst,
+		UpstreamRPS:             defaultUpstreamRPS,
+		UpstreamBurst:           defaultUpstreamBurst,
 		ShutdownTimeout:         defaultShutdownTimeout,
 		LLMMinLatency:           defaultLLMMinLatency,
 		LLMMaxLatency:           defaultLLMMaxLatency,
@@ -86,6 +98,22 @@ func (c Config) retryPolicy() retryPolicy {
 	return retryPolicy{maxAttempts: c.MaxAttempts, baseDelay: c.RetryBaseDelay, maxDelay: c.RetryMaxDelay}
 }
 
+func (c Config) inboundLimiter() *rate.Limiter {
+	return rate.NewLimiter(rate.Limit(c.InboundRPS), c.InboundBurst)
+}
+
+func (c Config) upstreamLimiter() *rate.Limiter {
+	return rate.NewLimiter(rate.Limit(c.UpstreamRPS), c.UpstreamBurst)
+}
+
+func (c Config) retryAfterSeconds() int {
+	sec := int(math.Ceil(1 / c.InboundRPS))
+	if d := time.Duration(sec) * time.Second; d < retryAfterMin {
+		return int(retryAfterMin / time.Second)
+	}
+	return sec
+}
+
 func ConfigFromEnv() (Config, error) {
 	cfg := DefaultConfig()
 	var errs []error
@@ -97,7 +125,10 @@ func ConfigFromEnv() (Config, error) {
 		readInt("WORKERS", &cfg.Workers),
 		readInt("QUEUE_SIZE", &cfg.QueueSize),
 		readInt("MAX_ATTEMPTS", &cfg.MaxAttempts),
-		readFloat("RATE_LIMIT_RPS", &cfg.RateLimitRPS),
+		readFloat("INBOUND_RPS", &cfg.InboundRPS),
+		readInt("INBOUND_BURST", &cfg.InboundBurst),
+		readFloat("UPSTREAM_RPS", &cfg.UpstreamRPS),
+		readInt("UPSTREAM_BURST", &cfg.UpstreamBurst),
 		readDuration("LLM_TIMEOUT", &cfg.LLMTimeout),
 		readDuration("SHUTDOWN_TIMEOUT", &cfg.ShutdownTimeout),
 		readDuration("LLM_MIN_LATENCY", &cfg.LLMMinLatency),
@@ -129,8 +160,17 @@ func (c Config) validate() error {
 	if c.MaxAttempts < 1 {
 		errs = append(errs, errors.New("MAX_ATTEMPTS must be >= 1"))
 	}
-	if c.RateLimitRPS <= 0 {
-		errs = append(errs, errors.New("RATE_LIMIT_RPS must be > 0"))
+	if c.InboundRPS <= 0 || math.IsNaN(c.InboundRPS) || math.IsInf(c.InboundRPS, 0) {
+		errs = append(errs, errors.New("INBOUND_RPS must be > 0"))
+	}
+	if c.InboundBurst < 1 {
+		errs = append(errs, errors.New("INBOUND_BURST must be >= 1"))
+	}
+	if c.UpstreamRPS <= 0 || math.IsNaN(c.UpstreamRPS) || math.IsInf(c.UpstreamRPS, 0) {
+		errs = append(errs, errors.New("UPSTREAM_RPS must be > 0"))
+	}
+	if c.UpstreamBurst < 1 {
+		errs = append(errs, errors.New("UPSTREAM_BURST must be >= 1"))
 	}
 	if c.LLMTimeout <= 0 {
 		errs = append(errs, errors.New("LLM_TIMEOUT must be > 0"))

@@ -14,13 +14,16 @@
    Do instead: código curto, nomes em inglês consistente, README em linguagem de gente, commits pequenos. Evitar boilerplate de IA (pastas vazias, comentários óbvios, README inflado).
 
 ## Domain Behavior Guardrails
-1. **[2026-09-05] Stack: Go stdlib, módulo github.com/danielmalka/coodesh-xyz**
-   Do instead: `net/http` + `slog` + channel. Sem framework.
+1. **[2026-09-05] Stack: Go stdlib (+ x/time/rate), módulo github.com/danielmalka/coodesh-xyz**
+   Do instead: `net/http` + `slog` + channel. Sem framework. Rate limit via `golang.org/x/time/rate` only.
 
 2. **[2026-09-05] PoC Arbitralis/Lexi: receber sync, processar async, responder outbound**
    Do instead: POST `/webhook` responde rápido; LLM simulado (sleep + falha ocasional) fora do request; outbound mock para WhatsApp; estado em memória; não logar PII.
 
-2. **[2026-09-05] README do Coodesh tem checklist próprio**
+3. **[2026-09-08] Phase 6: two limiters**
+   Do instead: inbound `Allow` before body → 429+Retry-After (INBOUND_RPS/BURST); shared upstream bucket for LLM+WhatsApp Wait (UPSTREAM_RPS/BURST, ~2 tokens/job).
+
+4. **[2026-09-05] README do Coodesh tem checklist próprio**
    Do instead: título, descrição em uma frase, stack, install/uso, `.gitignore`, payload de exemplo, ADR (fila prod, retry/DLQ), "This is a challenge by Coodesh".
 
 ## Execution & Validation

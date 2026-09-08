@@ -21,7 +21,10 @@ func TestConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("WORKERS", "8")
 	t.Setenv("QUEUE_SIZE", "1024")
 	t.Setenv("MAX_ATTEMPTS", "5")
-	t.Setenv("RATE_LIMIT_RPS", "12.5")
+	t.Setenv("INBOUND_RPS", "12.5")
+	t.Setenv("INBOUND_BURST", "7")
+	t.Setenv("UPSTREAM_RPS", "3.5")
+	t.Setenv("UPSTREAM_BURST", "4")
 	t.Setenv("LLM_TIMEOUT", "1500ms")
 	t.Setenv("SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("WHATSAPP_API_URL", "https://graph.facebook.com/v20.0/123/messages")
@@ -46,7 +49,10 @@ func TestConfigFromEnvOverrides(t *testing.T) {
 		LLMTimeout:              1500 * time.Millisecond,
 		MaxAttempts:             5,
 		WhatsAppURL:             "https://graph.facebook.com/v20.0/123/messages",
-		RateLimitRPS:            12.5,
+		InboundRPS:              12.5,
+		InboundBurst:            7,
+		UpstreamRPS:             3.5,
+		UpstreamBurst:           4,
 		ShutdownTimeout:         3 * time.Second,
 		LLMMinLatency:           50 * time.Millisecond,
 		LLMMaxLatency:           1500 * time.Millisecond,
@@ -71,7 +77,14 @@ func TestConfigFromEnvRejectsBadValues(t *testing.T) {
 		"zero attempts":         {"MAX_ATTEMPTS", "0", "MAX_ATTEMPTS must be >= 1"},
 		"bad duration":          {"LLM_TIMEOUT", "soon", "LLM_TIMEOUT"},
 		"negative duration":     {"LLM_TIMEOUT", "-1s", "LLM_TIMEOUT must be > 0"},
-		"zero rps":              {"RATE_LIMIT_RPS", "0", "RATE_LIMIT_RPS must be > 0"},
+		"zero inbound rps":      {"INBOUND_RPS", "0", "INBOUND_RPS must be > 0"},
+		"negative inbound rps":  {"INBOUND_RPS", "-1", "INBOUND_RPS must be > 0"},
+		"nan inbound rps":       {"INBOUND_RPS", "NaN", "must be a finite number"},
+		"zero inbound burst":    {"INBOUND_BURST", "0", "INBOUND_BURST must be >= 1"},
+		"zero upstream rps":     {"UPSTREAM_RPS", "0", "UPSTREAM_RPS must be > 0"},
+		"negative upstream rps": {"UPSTREAM_RPS", "-1", "UPSTREAM_RPS must be > 0"},
+		"nan upstream rps":      {"UPSTREAM_RPS", "NaN", "must be a finite number"},
+		"zero upstream burst":   {"UPSTREAM_BURST", "0", "UPSTREAM_BURST must be >= 1"},
 		"relative url":          {"WHATSAPP_API_URL", "/messages", "WHATSAPP_API_URL"},
 		"empty addr":            {"ADDR", "", "ADDR must not be empty"},
 		"negative min latency":  {"LLM_MIN_LATENCY", "-1s", "LLM_MIN_LATENCY must be >= 0"},

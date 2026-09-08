@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"sync/atomic"
+
+	"golang.org/x/time/rate"
 )
 
 type App struct {
@@ -17,6 +19,8 @@ type App struct {
 	llm         LLM
 	sender      *WhatsAppSender
 	log         *slog.Logger
+	inbound     *rate.Limiter
+	upstream    *rate.Limiter
 	mockCounter atomic.Uint64
 }
 
@@ -24,15 +28,21 @@ func New(cfg Config, llm LLM, sender *WhatsAppSender, log *slog.Logger) *App {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &App{
-		cfg:     cfg,
-		q:       NewQueue(cfg.QueueSize),
-		dlq:     &DeadLetterQueue{},
-		metrics: &Metrics{},
-		llm:     llm,
-		sender:  sender,
-		log:     log,
+	a := &App{
+		cfg:      cfg,
+		q:        NewQueue(cfg.QueueSize),
+		dlq:      &DeadLetterQueue{},
+		metrics:  &Metrics{},
+		llm:      llm,
+		sender:   sender,
+		log:      log,
+		inbound:  cfg.inboundLimiter(),
+		upstream: cfg.upstreamLimiter(),
 	}
+	if sender != nil {
+		sender.limiter = a.upstream
+	}
+	return a
 }
 
 func (a *App) Routes() http.Handler {

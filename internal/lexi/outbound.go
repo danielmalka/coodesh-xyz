@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const maxDrainBytes = 4 << 10
@@ -37,6 +39,7 @@ type WhatsAppSender struct {
 	policy  retryPolicy
 	timeout time.Duration
 	log     *slog.Logger
+	limiter *rate.Limiter
 }
 
 func NewWhatsAppSender(cfg Config, client *http.Client, log *slog.Logger) *WhatsAppSender {
@@ -53,6 +56,7 @@ func NewWhatsAppSender(cfg Config, client *http.Client, log *slog.Logger) *Whats
 		policy:  cfg.retryPolicy(),
 		timeout: cfg.OutboundTimeout,
 		log:     log,
+		limiter: rate.NewLimiter(rate.Inf, 0),
 	}
 }
 
@@ -77,6 +81,9 @@ func (s *WhatsAppSender) Send(ctx context.Context, msg OutboundMessage) (attempt
 func (s *WhatsAppSender) attempt(ctx context.Context, msg OutboundMessage, raw []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
+	if err := s.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, bytes.NewReader(raw))
 	if err != nil {
 		return permanent(err)

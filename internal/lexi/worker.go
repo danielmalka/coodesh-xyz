@@ -80,6 +80,9 @@ func (a *App) askLLM(ctx context.Context, text string) (reply string, attempts i
 		n++
 		callCtx, cancel := context.WithTimeout(ctx, a.cfg.LLMTimeout)
 		defer cancel()
+		if err := a.upstream.Wait(callCtx); err != nil {
+			return err
+		}
 		r, e := a.llm.Reply(callCtx, text)
 		if e != nil {
 			return e
