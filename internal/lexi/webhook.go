@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const maxBodyBytes = 1 << 20
+
 type inbound struct {
 	MessageID string `json:"message_id"`
 	From      string `json:"from"`
@@ -13,7 +15,7 @@ type inbound struct {
 }
 
 func (a *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
 	var in inbound
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {

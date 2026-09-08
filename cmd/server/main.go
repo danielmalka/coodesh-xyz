@@ -13,6 +13,12 @@ import (
 	"github.com/danielmalka/coodesh-xyz/internal/lexi"
 )
 
+const (
+	readHeaderTimeout = 5 * time.Second
+	readTimeout       = 10 * time.Second
+	writeTimeout      = 10 * time.Second
+)
+
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	if err := run(log); err != nil {
@@ -34,9 +40,9 @@ func run(log *slog.Logger) error {
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           app.Routes(),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
 	}
 
 	errCh := make(chan error, 1)

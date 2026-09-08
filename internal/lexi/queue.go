@@ -30,7 +30,7 @@ type Queue struct {
 
 func NewQueue(size int) *Queue {
 	if size < 1 {
-		size = 64
+		size = defaultQueueSize
 	}
 	return &Queue{
 		ch:   make(chan Job, size),

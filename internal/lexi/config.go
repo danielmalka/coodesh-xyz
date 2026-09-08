@@ -9,6 +9,17 @@ import (
 	"time"
 )
 
+const (
+	defaultAddr            = ":8080"
+	defaultWorkers         = 4
+	defaultQueueSize       = 256
+	defaultLLMTimeout      = 5 * time.Second
+	defaultMaxAttempts     = 3
+	defaultWhatsAppURL     = "http://127.0.0.1:8080/mock/whatsapp/messages"
+	defaultRateLimitRPS    = 50
+	defaultShutdownTimeout = 10 * time.Second
+)
+
 type Config struct {
 	Addr            string
 	Workers         int
@@ -22,14 +33,14 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		Addr:            ":8080",
-		Workers:         4,
-		QueueSize:       256,
-		LLMTimeout:      5 * time.Second,
-		MaxAttempts:     3,
-		WhatsAppURL:     "http://127.0.0.1:8080/mock/whatsapp/messages",
-		RateLimitRPS:    50,
-		ShutdownTimeout: 10 * time.Second,
+		Addr:            defaultAddr,
+		Workers:         defaultWorkers,
+		QueueSize:       defaultQueueSize,
+		LLMTimeout:      defaultLLMTimeout,
+		MaxAttempts:     defaultMaxAttempts,
+		WhatsAppURL:     defaultWhatsAppURL,
+		RateLimitRPS:    defaultRateLimitRPS,
+		ShutdownTimeout: defaultShutdownTimeout,
 	}
 }
 
